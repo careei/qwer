@@ -63,8 +63,8 @@ jobs:
                   applicationId 'io.yishun.unlock'
                   minSdk 26
                   targetSdk 34
-                  versionCode 1
-                  versionName '1.0'
+                  versionCode 2
+                  versionName '1.1'
               }
               compileOptions {
                   sourceCompatibility JavaVersion.VERSION_17
@@ -105,7 +105,9 @@ jobs:
           cat > app/src/main/java/io/yishun/unlock/MainHook.java <<'EOF'
           package io.yishun.unlock;
 
+          import android.os.Bundle;
           import de.robv.android.xposed.IXposedHookLoadPackage;
+          import de.robv.android.xposed.XC_MethodHook;
           import de.robv.android.xposed.XC_MethodReplacement;
           import de.robv.android.xposed.XposedBridge;
           import de.robv.android.xposed.XposedHelpers;
@@ -122,7 +124,31 @@ jobs:
                               XC_MethodReplacement.returnConstant(Boolean.TRUE));
                       XposedBridge.log("YishunUnlock: hooked gt.t.a()");
                   } catch (Throwable t) {
-                      XposedBridge.log("YishunUnlock: hook failed: " + t);
+                      XposedBridge.log("YishunUnlock: hook gt.t.a failed: " + t);
+                  }
+                  try {
+                      XposedHelpers.findAndHookMethod(
+                              "com.miui.mediaeditor.provider.MediaEditorProviderForGallery",
+                              lpparam.classLoader, "call",
+                              String.class, String.class, Bundle.class,
+                              new XC_MethodHook() {
+                                  @Override
+                                  protected void afterHookedMethod(MethodHookParam param) {
+                                      Object r = param.getResult();
+                                      if (r instanceof Bundle) {
+                                          Bundle b = (Bundle) r;
+                                          if (b.containsKey("method_is_legend_available")) {
+                                              b.putBoolean("method_is_legend_available", true);
+                                          }
+                                          if (b.containsKey("method_is_xm_legend_available")) {
+                                              b.putBoolean("method_is_xm_legend_available", true);
+                                          }
+                                      }
+                                  }
+                              });
+                      XposedBridge.log("YishunUnlock: hooked provider call()");
+                  } catch (Throwable t) {
+                      XposedBridge.log("YishunUnlock: hook provider failed: " + t);
                   }
               }
           }
