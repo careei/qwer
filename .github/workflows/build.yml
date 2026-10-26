@@ -1,0 +1,131 @@
+name: build
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Prepare SDK
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" > /dev/null || true
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+      - name: Write project files
+        run: |
+          mkdir -p app/src/main/java/io/yishun/unlock app/src/main/assets app/src/main/res/values
+          cat > settings.gradle <<'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+                  maven {
+                      url 'https://api.xposed.info/'
+                      content { includeGroup 'de.robv.android.xposed' }
+                  }
+              }
+          }
+          rootProject.name = 'YishunUnlock'
+          include ':app'
+          EOF
+          cat > build.gradle <<'EOF'
+          plugins {
+              id 'com.android.application' version '8.5.2' apply false
+          }
+          EOF
+          cat > gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx2g
+          android.nonTransitiveRClass=true
+          EOF
+          cat > app/build.gradle <<'EOF'
+          plugins {
+              id 'com.android.application'
+          }
+          android {
+              namespace 'io.yishun.unlock'
+              compileSdk 34
+              defaultConfig {
+                  applicationId 'io.yishun.unlock'
+                  minSdk 26
+                  targetSdk 34
+                  versionCode 1
+                  versionName '1.0'
+              }
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+          }
+          dependencies {
+              compileOnly 'de.robv.android.xposed:api:82'
+          }
+          EOF
+          cat > app/src/main/AndroidManifest.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <application
+                  android:label="@string/app_name"
+                  android:allowBackup="false">
+                  <meta-data android:name="xposedmodule" android:value="true" />
+                  <meta-data android:name="xposeddescription" android:value="@string/module_desc" />
+                  <meta-data android:name="xposedminversion" android:value="82" />
+                  <meta-data android:name="xposedscope" android:resource="@array/xposed_scope" />
+              </application>
+          </manifest>
+          EOF
+          cat > app/src/main/res/values/strings.xml <<'EOF'
+          <resources>
+              <string name="app_name">一瞬云端入口</string>
+              <string name="module_desc">让相册编辑把本机识别为支持一瞬云端处理的机型</string>
+          </resources>
+          EOF
+          cat > app/src/main/res/values/arrays.xml <<'EOF'
+          <resources>
+              <string-array name="xposed_scope">
+                  <item>com.miui.mediaeditor</item>
+              </string-array>
+          </resources>
+          EOF
+          echo "io.yishun.unlock.MainHook" > app/src/main/assets/xposed_init
+          cat > app/src/main/java/io/yishun/unlock/MainHook.java <<'EOF'
+          package io.yishun.unlock;
+
+          import de.robv.android.xposed.IXposedHookLoadPackage;
+          import de.robv.android.xposed.XC_MethodReplacement;
+          import de.robv.android.xposed.XposedBridge;
+          import de.robv.android.xposed.XposedHelpers;
+          import de.robv.android.xposed.callbacks.XC_LoadPackage;
+
+          public class MainHook implements IXposedHookLoadPackage {
+              @Override
+              public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
+                  if (!"com.miui.mediaeditor".equals(lpparam.packageName)) {
+                      return;
+                  }
+                  try {
+                      XposedHelpers.findAndHookMethod("gt.t", lpparam.classLoader, "a",
+                              XC_MethodReplacement.returnConstant(Boolean.TRUE));
+                      XposedBridge.log("YishunUnlock: hooked gt.t.a()");
+                  } catch (Throwable t) {
+                      XposedBridge.log("YishunUnlock: hook failed: " + t);
+                  }
+              }
+          }
+          EOF
+      - name: Build
+        run: g
