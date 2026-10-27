@@ -190,7 +190,7 @@ jobs:
                       XposedBridge.log("YishunUnlock: logger hooks=" + n);
                   } catch (Throwable t) {
                       XposedBridge.log("YishunUnlock: hook logger failed: " + 
-                            - name: Build
+      - name: Build
         run: gradle assembleDebug --no-daemon --stacktrace
       - uses: actions/upload-artifact@v4
         with:
