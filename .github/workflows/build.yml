@@ -189,7 +189,7 @@ jobs:
                       }
                       XposedBridge.log("YishunUnlock: logger hooks=" + n);
                   } catch (Throwable t) {
-                      XposedBridge.log("YishunUnlock: hook logger failed: " + 
+                                            XposedBridge.log("YishunUnlock: hook logger failed: " + t); 
                   }
               }
           }
