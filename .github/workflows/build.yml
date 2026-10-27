@@ -63,8 +63,8 @@ jobs:
                   applicationId 'io.yishun.unlock'
                   minSdk 26
                   targetSdk 34
-                  versionCode 2
-                  versionName '1.1'
+                  versionCode 3
+                  versionName '1.2'
               }
               compileOptions {
                   sourceCompatibility JavaVersion.VERSION_17
@@ -102,10 +102,12 @@ jobs:
           </resources>
           EOF
           echo "io.yishun.unlock.MainHook" > app/src/main/assets/xposed_init
-          cat > app/src/main/java/io/yishun/unlock/MainHook.java <<'EOF'
+                    cat > app/src/main/java/io/yishun/unlock/MainHook.java <<'EOF'
           package io.yishun.unlock;
 
           import android.os.Bundle;
+          import java.lang.reflect.Method;
+          import java.lang.reflect.Modifier;
           import de.robv.android.xposed.IXposedHookLoadPackage;
           import de.robv.android.xposed.XC_MethodHook;
           import de.robv.android.xposed.XC_MethodReplacement;
@@ -114,13 +116,17 @@ jobs:
           import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
           public class MainHook implements IXposedHookLoadPackage {
+              static final String[] KEYS = {"legend", "m3", "sdk", "cloud", "cta",
+                      "login", "download", "render", "init", "fail", "error", "ready"};
+
               @Override
-              public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
-                  if (!"com.miui.mediaeditor".equals(lpparam.packageName)) {
+              public void handleLoadPackage(XC_LoadPackage.LoadPackageParam p) {
+                  if (!"com.miui.mediaeditor".equals(p.packageName)) {
                       return;
                   }
+                  ClassLoader cl = p.classLoader;
                   try {
-                      XposedHelpers.findAndHookMethod("gt.t", lpparam.classLoader, "a",
+                      XposedHelpers.findAndHookMethod("gt.t", cl, "a",
                               XC_MethodReplacement.returnConstant(Boolean.TRUE));
                       XposedBridge.log("YishunUnlock: hooked gt.t.a()");
                   } catch (Throwable t) {
@@ -129,8 +135,7 @@ jobs:
                   try {
                       XposedHelpers.findAndHookMethod(
                               "com.miui.mediaeditor.provider.MediaEditorProviderForGallery",
-                              lpparam.classLoader, "call",
-                              String.class, String.class, Bundle.class,
+                              cl, "call", String.class, String.class, Bundle.class,
                               new XC_MethodHook() {
                                   @Override
                                   protected void afterHookedMethod(MethodHookParam param) {
@@ -150,10 +155,42 @@ jobs:
                   } catch (Throwable t) {
                       XposedBridge.log("YishunUnlock: hook provider failed: " + t);
                   }
-              }
-          }
-          EOF
-      - name: Build
+                  try {
+                      Class<?> lc = XposedHelpers.findClass("bj.a", cl);
+                      int n = 0;
+                      for (Method m : lc.getDeclaredMethods()) {
+                          Class<?>[] pt = m.getParameterTypes();
+                          if (!Modifier.isStatic(m.getModifiers())) continue;
+                          if (m.getReturnType() != void.class) continue;
+                          if (pt.length < 2 || pt[0] != String.class) continue;
+                          final String name = m.getName();
+                          XposedBridge.hookMethod(m, new XC_MethodHook() {
+                              @Override
+                              protected void beforeHookedMethod(MethodHookParam param) {
+                                  try {
+                                      StringBuilder sb = new StringBuilder();
+                                      for (Object a : param.args) {
+                                          sb.append(a).append(" | ");
+                                      }
+                                      String s = sb.toString();
+                                      String low = s.toLowerCase();
+                                      for (String k : KEYS) {
+                                          if (low.contains(k)) {
+                                              if (s.length() > 400) s = s.substring(0, 400);
+                                              XposedBridge.log("YishunTrace " + name + ": " + s);
+                                              break;
+                                          }
+                                      }
+                                  } catch (Throwable ignored) {
+                                  }
+                              }
+                          });
+                          n++;
+                      }
+                      XposedBridge.log("YishunUnlock: logger hooks=" + n);
+                  } catch (Throwable t) {
+                      XposedBridge.log("YishunUnlock: hook logger failed: " + 
+                            - name: Build
         run: gradle assembleDebug --no-daemon --stacktrace
       - uses: actions/upload-artifact@v4
         with:
